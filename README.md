@@ -264,13 +264,7 @@ Data for an active subscription is delivered via the `on_data func(data_payload 
 
 Set `ClientOptions.Debug = true` to enable verbose logging from the client, which can be helpful for troubleshooting connection and message flow issues.
 
-## Changelog
-
-### v0.2.0 - 2025-05-21
-
-*   **Breaking Change:** Updated `ClientOptions` to accept `AppSyncAPIHost` (string), `AppSyncRealtimeHost` (string), and `AWSRegion` (string) instead of full `AppSyncAPIURL` and `RealtimeServiceURL`. The client now constructs the full URLs internally. This change simplifies configuration and reduces potential URL formatting errors. Refer to the "Basic Usage" and "ClientOptions" sections for updated examples.
-*   Refactored subscription management logic into a separate `subscription.go` file for better code organization.
-*   Updated all tests and the test application to align with the new `ClientOptions` structure.
+For a detailed list of changes between versions, please see the [CHANGELOG.md](CHANGELOG.md) file.
 
 ## Contributing
 

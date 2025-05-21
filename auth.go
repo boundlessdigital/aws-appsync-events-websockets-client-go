@@ -74,6 +74,7 @@ func (c *Client) create_signed_headers_for_operation(ctx context.Context, payloa
 	}
 
 	// Calculate payload hash for SigV4
+	c.logf("Body for SigV4 signing in create_signed_headers_for_operation: %s", string(body_for_signing_bytes))
 	hash := sha256.Sum256(body_for_signing_bytes)
 	hex_hash := hex.EncodeToString(hash[:])
 
@@ -138,6 +139,7 @@ func (c *Client) create_connection_auth_subprotocol(ctx context.Context) ([]stri
 
 	// Sign the request
 	// Calculate SHA256 hash of the payload for signing
+	c.logf("Body for SigV4 signing in create_connection_auth_subprotocol: %s", string(bodyBytes))
 	hash := sha256.Sum256(bodyBytes)
 	hexHash := fmt.Sprintf("%x", hash)
 

@@ -77,6 +77,11 @@ func NewClient(opts ClientOptions) (*Client, error) {
 		kickKeepAlive: make(chan struct{}, 1), // Buffered to prevent blocking on send
 		on_connection_closed: opts.OnConnectionClose, // Corrected to use OnConnectionClose from ClientOptions
 	}
+	if c.options.Debug {
+		c.logf("Client initialized with options: %+v", opts)
+		// Note: AWSCfg contains credentials which should not be logged directly in production.
+		// For debugging, we are logging the whole struct but be mindful of sensitive data.
+	}
 	return c, nil
 }
 
