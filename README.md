@@ -4,7 +4,7 @@
 
 A Go client library for interacting with the AWS AppSync Events API via WebSockets. This library provides a convenient way to connect to your AppSync Events API, subscribe to channels, publish messages, and manage the WebSocket connection lifecycle with IAM-based authentication.
 
-This client is specifically for the **AWS AppSync Events API**, which is distinct from the AWS AppSync GraphQL API. Ensure you are using the correct service endpoints.
+This client is specifically for the **AWS AppSync Events API**. Ensure you are using the correct service endpoints for the Events protocol.
 
 ## Features
 
@@ -20,7 +20,7 @@ This client is specifically for the **AWS AppSync Events API**, which is distinc
 ## Prerequisites
 
 1.  **AWS Account:** You need an active AWS account.
-2.  **AppSync Events API:** An AppSync API configured for the Events protocol. This is different from a GraphQL API.
+2.  **AppSync Events API:** An AppSync API configured for the Events protocol.
     *   You will need the **AppSync API URL** (e.g., `https://<api-id>.appsync-api.<region>.amazonaws.com/event`) and the **Realtime Service URL** (e.g., `wss://<api-id>.appsync-realtime-api.<region>.amazonaws.com/event/realtime`).
 3.  **IAM Permissions:** The AWS credentials used by the client must have an IAM policy attached that grants permissions to interact with your AppSync Events API. This client handles the AWS Signature Version 4 (SigV4) signing process, which targets the `/event` path of your AppSync HTTP endpoint as detailed in the [AWS AppSync Events API WebSocket protocol documentation](https://docs.aws.amazon.com/appsync/latest/eventapi/event-api-websocket-protocol.html).
 
@@ -225,9 +225,9 @@ The `ClientOptions` struct allows you to configure the client's behavior:
 *   `AWSCfg` (aws.Config, required): AWS SDK v2 configuration, used for IAM authentication. Ensure it's configured with credentials that have the necessary AppSync permissions.
 *   `ConnectionInitPayload` (interface{}, optional): Payload for the `connection_init` message. Defaults to an empty object `{}` if nil, which is standard for IAM auth.
 *   `Debug` (bool, optional): Set to `true` to enable detailed debug logging from the client.
-*   `ReadTimeout` (time.Duration, optional): Maximum time to wait for a read from the WebSocket. Defaults to 3 minutes.
-*   `KeepAliveInterval` (time.Duration, optional): Interval for sending keep-alive messages. Defaults to 5 minutes. AppSync expects keep-alive pings, and the connection will be closed if they are not sent.
-*   `OperationTimeout` (time.Duration, optional): Default timeout for operations like subscribe, publish, and unsubscribe acknowledgments. Defaults to 20 seconds.
+*   `ReadTimeout` (time.Duration, optional): Maximum time to wait for a read from the WebSocket. Defaults to **15 minutes**.
+*   `KeepAliveInterval` (time.Duration, optional): Interval for sending keep-alive messages. Defaults to **2 minutes**. This should be shorter than server-side idle timeouts (often around 10 minutes) and the `ReadTimeout`. AppSync expects keep-alive pings, and the connection will be closed if they are not sent.
+*   `OperationTimeout` (time.Duration, optional): Default timeout for operations like subscribe, publish, etc. Defaults to **15 minutes**.
 *   **Callbacks:**
     *   `OnConnectionAck func(msg Message)`: Called when a `connection_ack` is received.
     *   `OnConnectionError func(msg Message)`: Called for AppSync `connection_error` messages.

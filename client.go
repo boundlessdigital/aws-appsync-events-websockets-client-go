@@ -52,10 +52,13 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}
 
 	if opts.KeepAliveInterval <= 0 {
-		opts.KeepAliveInterval = 5 * time.Minute // Default keep-alive interval
+		opts.KeepAliveInterval = 2 * time.Minute // Default keep-alive interval
 	}
 	if opts.ReadTimeout <= 0 {
-		opts.ReadTimeout = opts.KeepAliveInterval + 30*time.Second // Default read timeout slightly longer than keep-alive
+		opts.ReadTimeout = 15 * time.Minute // Default read timeout
+	}
+	if opts.OperationTimeout <= 0 {
+		opts.OperationTimeout = 15 * time.Minute // Default operation timeout
 	}
 
 	c := &Client{
