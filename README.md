@@ -22,7 +22,14 @@ This client is specifically for the **AWS AppSync Events API**, which is distinc
 1.  **AWS Account:** You need an active AWS account.
 2.  **AppSync Events API:** An AppSync API configured for the Events protocol. This is different from a GraphQL API.
     *   You will need the **AppSync API URL** (e.g., `https://<api-id>.appsync-api.<region>.amazonaws.com/event`) and the **Realtime Service URL** (e.g., `wss://<api-id>.appsync-realtime-api.<region>.amazonaws.com/event/realtime`).
-3.  **IAM Permissions:** The AWS credentials used by the client must have an IAM policy attached that grants permissions to interact with your AppSync Events API. A minimal policy might look like this:
+3.  **IAM Permissions:** The AWS credentials used by the client must have an IAM policy attached that grants permissions to interact with your AppSync Events API. This client handles the AWS Signature Version 4 (SigV4) signing process, which targets the `/event` path of your AppSync HTTP endpoint as detailed in the [AWS AppSync Events API WebSocket protocol documentation](https://docs.aws.amazon.com/appsync/latest/eventapi/event-api-websocket-protocol.html).
+
+    A minimal IAM policy should grant the following actions:
+    *   `appsync:Connect`: Required to establish the WebSocket connection.
+    *   `appsync:Subscribe`: Required to subscribe to specific event channels.
+    *   `appsync:PublishEvents`: Required to publish messages to event channels.
+
+    Here is an example policy structure:
 
     ```json
     {
@@ -31,10 +38,17 @@ This client is specifically for the **AWS AppSync Events API**, which is distinc
             {
                 "Effect": "Allow",
                 "Action": [
-                    "appsync:Connect",
+                    "appsync:Connect"
+                ],
+                "Resource": [
+                    "arn:aws:appsync:<region>:<account-id>:apis/<api-id>"
+                ]
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
                     "appsync:Subscribe",
-                    "appsync:Publish",
-                    "appsync:Receive"
+                    "appsync:PublishEvents"
                 ],
                 "Resource": [
                     "arn:aws:appsync:<region>:<account-id>:apis/<api-id>/channels/*"
@@ -43,7 +57,11 @@ This client is specifically for the **AWS AppSync Events API**, which is distinc
         ]
     }
     ```
-    Replace `<region>`, `<account-id>`, and `<api-id>` with your specific values.
+    **Important:**
+    *   Replace `<region>`, `<account-id>`, and `<api-id>` with your specific values.
+    *   The `appsync:Connect` action typically targets the API ARN itself.
+    *   The `appsync:Subscribe` and `appsync:PublishEvents` actions target channel ARNs. You can use wildcards as shown, or restrict permissions to specific channels for finer-grained control.
+    *   Always follow the principle of least privilege in your IAM policies.
 
 ## Installation
 
