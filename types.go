@@ -19,6 +19,7 @@ type ClientOptions struct {
 	ReadTimeout           time.Duration // Max time to wait for a read from the WebSocket connection
 	KeepAliveInterval     time.Duration // Interval for sending keep-alive messages
 	TestLogger            *testing.T    // Optional logger for tests
+	OperationTimeout    time.Duration // Default timeout for operations like subscribe, publish
 
 	// Optional callbacks
 	OnConnectionError func(msg Message)                             // Called for AppSync 'connection_error' messages. For other WS errors, use OnConnectionClose or log directly.

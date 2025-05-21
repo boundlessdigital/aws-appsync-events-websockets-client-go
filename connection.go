@@ -63,66 +63,12 @@ func (c *Client) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to send connection_init: %w", err)
 	}
 
+	c.internal_wg.Add(1) // For handleIncomingMessages
 	go c.handleIncomingMessages()
+	c.internal_wg.Add(1) // For manageKeepAlive
 	go c.manageKeepAlive()
 
 	return nil
-}
-
-// Close gracefully closes the WebSocket connection and cleans up resources.
-func (c *Client) Close() error {
-	c.logf("Client.Close: Entered") // DEBUG
-	c.mu.Lock()
-	if !c.isConnected && !c.isConnecting {
-		c.mu.Unlock()
-		c.logf("Close called but client is not connected or connecting.")
-		return nil // Not connected, nothing to close
-	}
-
-	// Signal all goroutines that depend on connCtx to stop
-	if c.connCancel != nil {
-		c.connCancel()
-	}
-
-	var err error
-	if c.conn != nil {
-		c.logf("Closing WebSocket connection...")
-		// Close with a normal closure status.
-		err = c.conn.Close(websocket.StatusNormalClosure, "Client closing connection")
-		c.logf("Client.Close: Setting c.conn = nil") // DEBUG
-		c.conn = nil
-	}
-
-	c.logf("Client.Close: Setting c.isConnected = false") // DEBUG
-	c.isConnected = false
-	c.isConnecting = false // Ensure this is also reset
-
-	// Clean up operations
-	for id, op := range c.operations {
-		op.subscriptionCancel() // Cancel the context for this operation
-		close(op.ackCh)
-		close(op.errorCh)
-		if op.dataChannel != nil {
-			close(op.dataChannel)
-		}
-		delete(c.operations, id)
-	}
-	c.mu.Unlock()
-
-	if c.options.OnConnectionClose != nil {
-		// Convert error to code and reason if possible, or use defaults
-		// This is a simplified notification as specific close codes from server are hard to get here.
-		closeCode := 1000
-		closeReason := "Client initiated close"
-		if err != nil { // If close itself had an error
-			closeCode = 1006 // Abnormal closure
-			closeReason = err.Error()
-		}
-		c.options.OnConnectionClose(closeCode, closeReason)
-	}
-
-	c.logf("WebSocket connection closed.")
-	return err // Return the error from conn.Close() if any
 }
 
 // DerefString safely dereferences a string pointer, returning an empty string if the pointer is nil.
@@ -233,11 +179,10 @@ func (c *Client) _read_and_unmarshal_message() (Message, error) {
 // handleIncomingMessages runs in a goroutine to process messages from AppSync.
 func (c *Client) handleIncomingMessages() {
 	defer func() {
-		c.logf("handleIncomingMessages goroutine stopped.")
-		// If this loop stops (e.g., due to connection error), ensure client is marked as disconnected.
-		// The Close() method is idempotent and handles the lock internally.
-		c.Close() // Attempt a graceful close and cleanup
+		c.logf("[AppSyncWSClient-DEBUG] handleIncomingMessages goroutine stopping.")
+		c.internal_wg.Done()
 	}()
+	c.logf("[AppSyncWSClient-DEBUG] handleIncomingMessages goroutine started.")
 
 	for {
 		select {
@@ -300,6 +245,11 @@ func (c *Client) _get_effective_keep_alive_timeout() time.Duration {
 
 // manageKeepAlive sends keep-alive messages to the server.
 func (c *Client) manageKeepAlive() {
+	defer func() {
+		c.logf("[AppSyncWSClient-DEBUG] manageKeepAlive goroutine stopping.")
+		c.internal_wg.Done()
+	}()
+	c.logf("[AppSyncWSClient-DEBUG] manageKeepAlive goroutine started.")
 	effectiveTimeout := c._get_effective_keep_alive_timeout()
 	pingInterval := effectiveTimeout / 2
 	if pingInterval <= 0 { // Ensure ping interval is positive to prevent ticker panic
@@ -309,8 +259,8 @@ func (c *Client) manageKeepAlive() {
 
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
-	defer c.logf("manageKeepAlive goroutine stopped.")
-	c.logf("manageKeepAlive started. Initial ping interval: %v (based on effective timeout: %v)", pingInterval, effectiveTimeout)
+	// Defer for internal_wg.Done() is now at the top of the function.
+	c.logf("manageKeepAlive: Initial ping interval: %v (based on effective timeout: %v)", pingInterval, effectiveTimeout)
 
 	for {
 		select {
