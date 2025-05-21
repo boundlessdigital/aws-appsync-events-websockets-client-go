@@ -9,6 +9,8 @@ import (
 	"nhooyr.io/websocket"
 )
 
+const defaultClientKeepAliveTimeout = 5 * time.Minute
+
 // Connect establishes a WebSocket connection to AppSync and handles authentication.
 func (c *Client) Connect(ctx context.Context) error {
 	c.mu.Lock()
@@ -69,6 +71,7 @@ func (c *Client) Connect(ctx context.Context) error {
 
 // Close gracefully closes the WebSocket connection and cleans up resources.
 func (c *Client) Close() error {
+	c.logf("Client.Close: Entered") // DEBUG
 	c.mu.Lock()
 	if !c.isConnected && !c.isConnecting {
 		c.mu.Unlock()
@@ -86,9 +89,11 @@ func (c *Client) Close() error {
 		c.logf("Closing WebSocket connection...")
 		// Close with a normal closure status.
 		err = c.conn.Close(websocket.StatusNormalClosure, "Client closing connection")
+		c.logf("Client.Close: Setting c.conn = nil") // DEBUG
 		c.conn = nil
 	}
 
+	c.logf("Client.Close: Setting c.isConnected = false") // DEBUG
 	c.isConnected = false
 	c.isConnecting = false // Ensure this is also reset
 
@@ -136,8 +141,10 @@ func (c *Client) sendMessage(ctx context.Context, msg Message) error {
 
 	c.mu.RLock()
 	conn := c.conn
+	isConnectedState := c.isConnected // Read isConnected under RLock
 	c.mu.RUnlock()
 
+	c.logf("sendMessage: conn == nil: %t, isConnected state from sendMessage: %t", conn == nil, isConnectedState) // DEBUG
 	if conn == nil {
 		return fmt.Errorf("cannot send message: not connected")
 	}
@@ -173,12 +180,53 @@ func (c *Client) _read_and_unmarshal_message() (Message, error) {
 		c.logf("Received raw WebSocket message type %v: %s", msgType, string(data))
 	}
 
-	var msg Message
-	if err := json.Unmarshal(data, &msg); err != nil {
-		// Log and return the unmarshalling error, including raw data for diagnosis.
-		c.logf("Error unmarshalling message: %v. Raw data: %s", err, string(data))
-		return Message{}, fmt.Errorf("error unmarshalling message: %w. Raw data: %s", err, string(data))
+	// First, attempt to unmarshal into a map to access all raw fields, including a potential top-level "event".
+	var raw_map map[string]interface{}
+	if err_map := json.Unmarshal(data, &raw_map); err_map != nil {
+		c.logf("Error unmarshalling raw WebSocket message to map: %v. Raw: %s", err_map, string(data))
+		// Even if map unmarshal fails, try to unmarshal to struct as it might be a known type without 'event'.
 	}
+
+	var msg Message
+	if err_struct := json.Unmarshal(data, &msg); err_struct != nil {
+		// Log and return the unmarshalling error, including raw data for diagnosis.
+		c.logf("Error unmarshalling message to Message struct: %v. Raw data: %s", err_struct, string(data))
+		return Message{}, fmt.Errorf("error unmarshalling message to Message struct: %w. Raw data: %s", err_struct, string(data))
+	}
+
+	// If it's a 'data' message and the raw message (from map) contained an 'event' field,
+	// ensure msg.Payload.Data gets this event value. This handles cases where AppSync sends
+	// data messages with a top-level "event" field instead of nested within "payload.data".
+	if msg.Type == MsgTypeData && raw_map != nil { // Check raw_map is not nil from previous unmarshal error
+		if event_val, ok := raw_map["event"]; ok {
+			if msg.Payload == nil {
+				msg.Payload = &PayloadContainer{}
+			}
+			// The 'event' field in AppSync 'data' messages typically contains a JSON string, which itself needs to be unmarshalled
+			// if the consumer expects a structured object. However, our on_data callback takes interface{},
+			// so we can pass the raw 'event_val'. If it's a string, it will be a JSON string.
+			// If it's already a map/object (less common for 'event' field), it's passed as is.
+			final_event_data := event_val
+			if event_str, is_string := event_val.(string); is_string {
+				var unmarshalled_from_event_str interface{}
+				// Attempt to unmarshal the string content. 
+				// If event_str is "\"foo\"", unmarshalled_from_event_str becomes "foo".
+				// If event_str is "foo", unmarshalling fails, final_event_data remains "foo".
+				// If event_str is "{\"key\":\"val\"}", unmarshalled_from_event_str becomes map[string]interface{}{"key":"val"}.
+				if json.Unmarshal([]byte(event_str), &unmarshalled_from_event_str) == nil {
+					final_event_data = unmarshalled_from_event_str
+				}
+				// If unmarshal fails, final_event_data remains event_str (the original string content from the map)
+			}
+			msg.Payload.Data = final_event_data
+			if c.options.Debug { 
+			    c.logf("Manually mapped 'event' field to Payload.Data for 'data' message ID %s. Original event_val type: %T, Final Payload.Data type: %T", DerefString(msg.ID), event_val, msg.Payload.Data)
+			} else {
+			    c.logf("Manually mapped 'event' field to Payload.Data for 'data' message ID %s", DerefString(msg.ID))
+			}
+		}
+	}
+
 	return msg, nil
 }
 
@@ -232,10 +280,6 @@ func (c *Client) handleIncomingMessages() {
 		c.dispatchMessage(msg) // Delegate all message handling to dispatchMessage
 	}
 }
-
-// defaultClientKeepAliveTimeout is the default keep-alive timeout if not specified by
-// the client options or the server via connection_ack.
-const defaultClientKeepAliveTimeout = 5 * time.Minute
 
 // _get_effective_keep_alive_timeout determines the effective keep-alive timeout duration.
 // It prioritizes server-suggested, then client-configured, then a default.

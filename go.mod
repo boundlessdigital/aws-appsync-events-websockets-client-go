@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.26.2
 	github.com/aws/aws-sdk-go-v2/config v1.27.14
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.14
+	github.com/stretchr/testify v1.10.0
 	nhooyr.io/websocket v1.8.10
 )
 
@@ -20,4 +21,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.24.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.28.8 // indirect
 	github.com/aws/smithy-go v1.20.2 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

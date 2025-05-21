@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"testing" // Added for testLogger
 	"time"
 
 	signer "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
@@ -18,6 +19,7 @@ const (
 
 type Client struct {
 	options      ClientOptions
+	testLogger   *testing.T // For direct test logging
 	conn         *websocket.Conn
 	connCtx      context.Context
 	connCancel   context.CancelFunc
@@ -50,6 +52,7 @@ func NewClient(opts ClientOptions) (*Client, error) {
 
 	c := &Client{
 		options:    opts,
+		testLogger: opts.TestLogger, // Initialize test logger
 		signer:     signer.NewSigner(),
 		operations: make(map[string]*operation),
 		kickKeepAlive: make(chan struct{}, 1), // Buffered to prevent blocking on send
@@ -58,8 +61,11 @@ func NewClient(opts ClientOptions) (*Client, error) {
 }
 
 func (c *Client) logf(format string, v ...interface{}) {
-	if c.options.Debug {
-		log.Printf("[AppSyncWSClient-DEBUG] "+format, v...)
+	prefix := "[AppSyncWSClient-DEBUG] "
+	if c.testLogger != nil {
+		c.testLogger.Logf(prefix+format, v...)
+	} else if c.options.Debug {
+		log.Printf(prefix+format, v...)
 	}
 }
 
@@ -170,7 +176,7 @@ func (c *Client) handleNonOperationMessage(msg Message) {
 		}
 		// A connection_error from AppSync is fatal for this connection.
 		if msg.Type == MsgTypeConnectionError {
-			c.Close() // Close client connection
+			go c.Close() // Close client connection in a new goroutine
 		}
 	default:
 		if isErrorType(msg.Type) {
@@ -207,4 +213,11 @@ func (c *Client) dispatchMessage(msg Message) {
 	// The mutex is still locked.
 	c.handleNonOperationMessage(msg)
 	c.mu.Unlock()
+}
+
+// IsConnected returns true if the client believes it is currently connected.
+func (c *Client) IsConnected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.isConnected
 }

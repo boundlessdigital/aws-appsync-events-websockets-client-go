@@ -113,7 +113,7 @@ func (c *Client) Publish(ctx context.Context, channel string, events_payload []i
 		if len(err_msg.Errors) > 0 {
 			emsg = fmt.Sprintf("publish operation %s failed: %s - %s", operation_id, err_msg.Errors[0].ErrorType, err_msg.Errors[0].Message)
 		}
-		return fmt.Errorf(emsg)
+		return fmt.Errorf("%s", emsg)
 	case <-timeout_timer.C:
 		return fmt.Errorf("publish operation %s timed out", operation_id)
 	case <-c.connCtx.Done():

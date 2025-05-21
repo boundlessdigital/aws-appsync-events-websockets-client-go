@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,22 +40,12 @@ func (c *Client) create_signed_headers_for_operation(ctx context.Context, payloa
 	// URL for signing: https://<host>/event
 	// Headers for signing request: accept, content-encoding, content-type, host
 
-	// Construct the body for signing based on the payload content
-	body_for_signing_map := make(map[string]interface{})
-	if channel_val, ok := payload["channel"]; ok {
-		body_for_signing_map["channel"] = channel_val
-	} else {
-		return nil, fmt.Errorf("payload for signing must contain 'channel'")
-	}
-
-	// If 'events' are present (for publish operation), include them in the signing payload.
-	if events_val, ok := payload["events"]; ok {
-		body_for_signing_map["events"] = events_val
-	}
-
-	body_for_signing, err := json.Marshal(body_for_signing_map)
+	// Construct the body for signing. This is the JSON marshalled 'payload'.
+	// For a subscribe operation with empty data, payload is map[string]interface{}{}, which marshals to "{}".
+	// For a publish operation, payload would be map[string]interface{}{"events": ["event_data_string"]}, marshaling to {"events":["event_data_string"]}.
+	body_for_signing_bytes, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling channel payload for signing: %w", err)
+		return nil, fmt.Errorf("error marshalling payload for signing: %w", err)
 	}
 
 	parsed_url, err := url.Parse(c.options.AppSyncAPIURL)
@@ -64,7 +55,7 @@ func (c *Client) create_signed_headers_for_operation(ctx context.Context, payloa
 	// Signing URL path must be /event for operations as per documentation
 	signing_url_str := fmt.Sprintf("%s://%s/event", parsed_url.Scheme, parsed_url.Host)
 
-	req, err := http.NewRequest("POST", signing_url_str, bytes.NewReader(body_for_signing))
+	req, err := http.NewRequest("POST", signing_url_str, bytes.NewReader(body_for_signing_bytes))
 	if err != nil {
 		return nil, fmt.Errorf("error creating new request for signing: %w", err)
 	}
@@ -83,7 +74,7 @@ func (c *Client) create_signed_headers_for_operation(ctx context.Context, payloa
 	}
 
 	// Calculate payload hash for SigV4
-	hash := sha256.Sum256(body_for_signing)
+	hash := sha256.Sum256(body_for_signing_bytes)
 	hex_hash := hex.EncodeToString(hash[:])
 
 	err = c.signer.SignHTTP(ctx, creds, req, hex_hash, "appsync", c.options.AWSCfg.Region, time.Now())
@@ -124,8 +115,16 @@ func (c *Client) create_connection_auth_subprotocol(ctx context.Context) ([]stri
 	body := "{}"
 	bodyBytes := []byte(body)
 
-	// Create the request using the AppSyncAPIURL for signing.
-	req, err := http.NewRequestWithContext(ctx, "POST", c.options.AppSyncAPIURL, bytes.NewReader(bodyBytes))
+	// Construct the signing URL, ensuring the path is /event for the WebSocket handshake signature
+	signingURL := url.URL{
+		Scheme: parsedAPIURL.Scheme,
+		Host:   parsedAPIURL.Host,
+		Path:   "/event",
+	}
+	signingURLString := signingURL.String()
+
+	// Create the request for signing using the constructed signingURLString.
+	req, err := http.NewRequestWithContext(ctx, "POST", signingURLString, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request for signing: %w", err)
 	}
@@ -135,6 +134,7 @@ func (c *Client) create_connection_auth_subprotocol(ctx context.Context) ([]stri
 	req.Header.Set("Content-Encoding", "amz-1.0") // As per AppSync client examples
 	// Host header for signing must match the host of AppSyncAPIURL.
 	req.Host = parsedAPIURL.Host
+	req.Header.Set("Content-Length", strconv.Itoa(len(bodyBytes)))
 
 	// Sign the request
 	// Calculate SHA256 hash of the payload for signing

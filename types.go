@@ -3,6 +3,7 @@ package appsyncwsclient
 import (
 	"context"       // For operation struct
 	"encoding/json" // Added for Message.ToJSONString
+	"testing"       // For TestLogger
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,6 +18,7 @@ type ClientOptions struct {
 	Debug                 bool          // Enable debug logging.
 	ReadTimeout           time.Duration // Max time to wait for a read from the WebSocket connection
 	KeepAliveInterval     time.Duration // Interval for sending keep-alive messages
+	TestLogger            *testing.T    // Optional logger for tests
 
 	// Optional callbacks
 	OnConnectionError func(msg Message)                             // Called for AppSync 'connection_error' messages. For other WS errors, use OnConnectionClose or log directly.

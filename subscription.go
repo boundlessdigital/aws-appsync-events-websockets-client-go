@@ -45,7 +45,6 @@ func (c *Client) Subscribe(ctx context.Context, channel string, on_data func(dat
 	}
 	c.mu.RUnlock()
 
-	// Ensure channel name starts with a "/" as per documentation examples for signing and message structure.
 	formatted_channel := channel
 	if !strings.HasPrefix(channel, "/") {
 		formatted_channel = "/" + channel
@@ -55,7 +54,6 @@ func (c *Client) Subscribe(ctx context.Context, channel string, on_data func(dat
 	subscription_id := c.generate_operation_id()
 	c.logf("Initiating subscription %s to channel: %s", subscription_id, formatted_channel)
 
-	// Prepare authorization for the subscribe message
 	subscribe_auth_payload := map[string]interface{}{"channel": formatted_channel}
 	auth_headers, err := c.create_signed_headers_for_operation(ctx, subscribe_auth_payload)
 	if err != nil {
@@ -69,99 +67,129 @@ func (c *Client) Subscribe(ctx context.Context, channel string, on_data func(dat
 		Authorization: auth_headers,
 	}
 
-	// Create operation context for cancellation
-	op_ctx, op_cancel := context.WithCancel(c.connCtx) // Inherit from connection context
+	// Create the context and cancel function for the Subscription object.
+	// This context will also govern the data handling goroutine's lifetime.
+	sub_specific_ctx, sub_specific_cancel := context.WithCancel(c.connCtx)
+	
+	// Ensure sub_specific_cancel is called if Subscribe returns an error path after this point,
+	// or if it panics. This is a safeguard. Successful return paths will return the sub object,
+	// and its sub_specific_cancel will be managed by sub.Unsubscribe() or client close.
+	// Error paths before returning sub must cancel it to prevent goroutine/context leaks.
+	var returned_sub_successfully bool = false
+	defer func() {
+		if !returned_sub_successfully {
+			c.logf("Subscribe for %s returning error or panicking, ensuring its context is cancelled.", subscription_id)
+			sub_specific_cancel()
+		}
+	}()
+
+	user_facing_data_channel := make(chan interface{}, 10)
+
+	sub := &Subscription{
+		ID:          subscription_id,
+		client:      c,
+		dataChannel: user_facing_data_channel,
+		ctx:         sub_specific_ctx,
+		cancel:      sub_specific_cancel,
+	}
 
 	op := &operation{
-		ID:                subscription_id,
-		MessageType:       MsgTypeSubscribe,
-		subscriptionCtx:   op_ctx,
-		subscriptionCancel: op_cancel,
-		ackCh:             make(chan Message, 1),
+		ID:                 subscription_id,
+		MessageType:        MsgTypeSubscribe,
+		subscriptionCtx:    sub.ctx,    // Use the Subscription's context
+		subscriptionCancel: sub.cancel, // Use the Subscription's cancel
+		ackCh:              make(chan Message, 1),
 		errorCh:           make(chan Message, 1),
-		dataChannel:       make(chan Message, 10), // Buffered channel for incoming data messages
-		timeoutDuration:   defaultOperationTimeout,
+		dataChannel:        make(chan Message, 10), 
+		timeoutDuration:    defaultOperationTimeout,
+		// timeoutTimer is set below
 	}
 
 	c.mu.Lock()
 	c.operations[subscription_id] = op
 	c.mu.Unlock()
 
-	// Goroutine to handle data from this subscription's internal data_channel
-	// and pass it to the user's on_data callback.
-	user_facing_data_channel := make(chan interface{}, 10) // Buffered channel for user
+	// Data handling goroutine
 	go func() {
 		defer close(user_facing_data_channel)
-		defer c.logf("Subscription %s data handler goroutine stopped.", subscription_id)
+		// Use op.ID in logs as subscription_id might be shadowed if this func took it as param
+		defer c.logf("Subscription %s data handler goroutine stopped.", op.ID) 
 		for {
 			select {
-			case <-op.subscriptionCtx.Done(): // handles unsubscribe or client close
+			case <-op.subscriptionCtx.Done(): // Tied to sub.ctx.Done()
+				c.logf("op.subscriptionCtx.Done() selected in data handler for op %s. Returning.", op.ID)
 				return
-			case data_msg, ok := <-op.dataChannel:
-				if !ok { // Channel closed by unsubscribe
+			case data_msg, ok := <-op.dataChannel: // data_msg is the *Message struct*
+				c.logf("Read from op.dataChannel for op %s. ok: %t. Message Type: %s", op.ID, ok, data_msg.Type)
+				if !ok { 
+					c.logf("op.dataChannel closed for op %s. Returning.", op.ID)
 					return
 				}
-				if data_msg.Payload != nil && data_msg.Payload.Data != nil {
-					// Send deserialized data to user-facing channel or callback
+
+				var event_data_to_deliver interface{}
+				if data_msg.Payload != nil && data_msg.Payload.Data != nil { 
+					c.logf("Event data for op %s from data_msg.Payload.Data: %v", op.ID, data_msg.Payload.Data)
+					event_data_to_deliver = data_msg.Payload.Data 
 					if on_data != nil {
-						on_data(data_msg.Payload.Data)
+						on_data(event_data_to_deliver)
+						c.logf("Called on_data callback for op %s", op.ID)
 					} else {
 						select {
-						case user_facing_data_channel <- data_msg.Payload.Data:
-						case <-op.subscriptionCtx.Done():
-							return
+						case user_facing_data_channel <- event_data_to_deliver:
+							c.logf("Sent data to user_facing_data_channel for op %s", op.ID)
+						case <-op.subscriptionCtx.Done(): // Subscription context cancelled
+							c.logf("Subscription context done while trying to send to user_facing_data_channel for op %s", op.ID)
+							// Do not return here yet, let the loop exit via op.subscriptionCtx.Done() select case
 						}
 					}
+				} else {
+					c.logf("No event data found in data_msg.Payload.Data for op %s (Type: %s, Payload: %v)", op.ID, data_msg.Type, data_msg.Payload)
 				}
 			}
 		}
 	}()
 
 	if err := c.sendMessage(ctx, sub_msg); err != nil {
+		c.logf("Failed to send subscribe message for %s: %v. Cleaning up operation.", subscription_id, err)
 		c.mu.Lock()
 		delete(c.operations, subscription_id)
 		c.mu.Unlock()
-		op_cancel() // Cancel the data handler goroutine
+		// returned_sub_successfully is false, so defer will call sub_specific_cancel()
 		return nil, fmt.Errorf("failed to send subscribe message: %w", err)
 	}
-
-	op.timeoutTimer = time.AfterFunc(op.timeoutDuration, func() {
-		err_msg := Message{Type: MsgTypeError, ID: &subscription_id, Errors: []MessageError{{Message: "subscription timeout"}}}
-		// Ensure sending to errorCh does not block if it's already closed or full
-		select {
-		case op.errorCh <- err_msg:
-		default:
-			c.logf("Failed to send timeout error to op.errorCh for %s, channel likely closed or full.", subscription_id)
-		}
-	})
+	
+	op.timeoutTimer = time.NewTimer(op.timeoutDuration)
 
 	select {
 	case ack := <-op.ackCh:
 		op.timeoutTimer.Stop()
 		c.logf("Subscription %s acknowledged: %s", subscription_id, ack.Type)
-		sub := &Subscription{
-			ID:          subscription_id,
-			client:      c,
-			dataChannel: user_facing_data_channel, // Provide the user-facing channel
-			ctx:         op_ctx,
-			cancel:      op_cancel,
-		}
+		returned_sub_successfully = true // Mark successful return, defer will not cancel sub_specific_ctx
 		return sub, nil
-	case err_msg := <-op.errorCh:
+	case errMsg := <-op.errorCh:
 		op.timeoutTimer.Stop()
+		c.logf("Subscription %s failed: Type=%s, Errors=%v", subscription_id, errMsg.Type, errMsg.Errors)
 		c.mu.Lock()
 		delete(c.operations, subscription_id)
 		c.mu.Unlock()
-		op_cancel()
-		return nil, fmt.Errorf("subscription %s failed: %v", subscription_id, err_msg.Errors)
-	case <-ctx.Done(): // User's context for the Subscribe call itself
-		op.timeoutTimer.Stop()
+		// returned_sub_successfully is false, so defer will call sub_specific_cancel()
+		return nil, fmt.Errorf("subscription %s failed: %v (type: %s)", subscription_id, errMsg.Errors, errMsg.Type)
+	case <-op.timeoutTimer.C:
+		c.logf("Subscription %s timed out waiting for ack/error.", subscription_id)
+		c.mu.Lock()
+		delete(c.operations, subscription_id)
+		c.mu.Unlock()
+		// returned_sub_successfully is false, so defer will call sub_specific_cancel()
+		return nil, fmt.Errorf("subscription %s timed out", subscription_id)
+	case <-ctx.Done(): // Overall context for the Subscribe call itself
+		c.logf("Context cancelled while waiting for subscription %s ack/error: %v", subscription_id, ctx.Err())
+		op.timeoutTimer.Stop() // Stop timer if running
 		c.mu.Lock()
 		if _, exists := c.operations[subscription_id]; exists {
-			c.logf("Subscribe context for %s done, attempting to clean up by unsubscribing.", subscription_id)
-			go c.unsubscribe(subscription_id) // Fire and forget unsubscribe for cleanup
+			delete(c.operations, subscription_id)
 		}
 		c.mu.Unlock()
+		// returned_sub_successfully is false, so defer will call sub_specific_cancel()
 		return nil, ctx.Err()
 	}
 }
