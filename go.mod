@@ -1,4 +1,4 @@
-module github.com/boundlessdigital/aws-appsync-events-websockets-client
+module github.com/boundlessdigital/aws-appsync-events-websockets-client-go
 
 go 1.24
 
