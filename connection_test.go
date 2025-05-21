@@ -29,8 +29,9 @@ func TestIntegration_ConnectDisconnect(t *testing.T) {
 	}
 
 	client, clientErr := NewClient(ClientOptions{
-		AppSyncAPIURL:      testAppSyncAPIURL,
-		RealtimeServiceURL: testRealtimeServiceURL,
+		AppSyncAPIHost:      testAppSyncAPIHost,
+		AppSyncRealtimeHost: testAppSyncRealtimeHost,
+		AWSRegion:           testAWSRegion,
 		AWSCfg:             awsCfg,
 		TestLogger:        t,
 		OnConnectionAck: func(msg Message) {

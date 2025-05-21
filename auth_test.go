@@ -47,10 +47,13 @@ func TestCreateConnectionAuthSubprotocol_Success(t *testing.T) {
 	mockSig := &mockSigner{}
 
 	clientOpts := ClientOptions{
-		AppSyncAPIURL:      "https://example123.appsync-api.us-west-1.amazonaws.com/graphql", // Path will be overridden to /event by the func
-		RealtimeServiceURL: "wss://example123.appsync-realtime-api.us-west-1.amazonaws.com/event/realtime",
+		AppSyncAPIHost:      "example123.appsync-api.us-west-1.amazonaws.com",
+		AppSyncRealtimeHost: "example123.appsync-realtime-api.us-west-1.amazonaws.com",
+		AWSRegion:           "us-west-1",
 		AWSCfg: aws.Config{
-			Region: "us-west-1",
+			// Region field in AWSCfg is still useful for the SDK to know the default region for services if not overridden,
+			// but our client specifically uses AWSRegion from ClientOptions for signing AppSync requests.
+			Region: "us-west-1", 
 			Credentials: credentials.NewStaticCredentialsProvider("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "mockSessionToken"),
 		},
 		Debug:      true,
@@ -84,14 +87,14 @@ func TestCreateConnectionAuthSubprotocol_Success(t *testing.T) {
 
 func TestClient_create_signed_headers_for_operation_Subscribe_IAM(t *testing.T) {
 	ctx := context.Background()
-	apiURL := "https://example123.appsync-api.us-east-1.amazonaws.com/graphql" // Base URL, path will be overridden by create_signed_headers_for_operation
+	apiURLHost := "example123.appsync-api.us-east-1.amazonaws.com" // Just the host part
 	region := "us-east-1"
 	accessKeyID := "AKIAIOSFODNN7EXAMPLE"
 	secretAccessKey := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 	sessionToken := "AQoDYXdzEPT//////////wEXAMPLEtc764bNrC9SAPBSM22wDOk4x4HIZ8j4FZTwdQWMAEXAMPLECMW2gKWTCGYufrsOFyL1jy1DakeP7t7DMXwNhOYHT3sq6K2Y2Y+lgpDT10GvCVfKjL/KSINtSiYGIj3j2Y8/P8oAYuA/c1GrmKRgL4jAYuA/c1GrmKRgL4jAYuA/c1GrmKRgL4jAYuA/c1GrmKRgL4jAYuA/c1GrmKRgL4jAYuA/c2ZpQAAAQBEXAMPLEDEZxVjGud203gojWBVOqXnOImP3P3cHiPIJGaXL2mN2Y089kjqcpE80m5cea3ryVCSyAd7a610ik7B2W3zYyORYwHrmZz2Pff2Pff2Pff2Pff2Pff2Pff2Pff2Pff2Pff2Pff2Pff2Pff2V3LzAAAAAQEABA=="
 
 	credsProvider := credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, sessionToken)
-	parsedAPIURL, _ := url.Parse(apiURL)
+	parsedAPIURL, _ := url.Parse("https://" + apiURLHost + "/event")
 	expectedHost := parsedAPIURL.Host
 	// create_signed_headers_for_operation always signs for the "/event" path.
 	expectedPathForSigning := "/event"
@@ -123,13 +126,17 @@ func TestClient_create_signed_headers_for_operation_Subscribe_IAM(t *testing.T) 
 	}
 
 	c := &Client{
-		options: ClientOptions{
-			AppSyncAPIURL: apiURL,
+		options: ClientOptions{ // Options as they would be passed by the user
+			AppSyncAPIHost:      apiURLHost, // apiURLHost should be defined as just the host for this test
+			AWSRegion:           region,
 			AWSCfg: aws.Config{
-				Region:      region,
+				Region:      region, // SDK config region
 				Credentials: credsProvider,
 			},
 		},
+		// Internal fields that NewClient would have set
+		// Construct the internal API URL as NewClient would
+		appsyncAPIURLInternal: "https://" + apiURLHost + "/event",
 		signer: mockSig, // Inject the mock signer
 	}
 

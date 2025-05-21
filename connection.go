@@ -28,7 +28,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		c.mu.Unlock()
 	}()
 
-	c.logf("Attempting to connect to %s", c.options.RealtimeServiceURL)
+	c.logf("Attempting to connect to %s", c.realtimeServiceURLInternal)
 
 	subprotocols, err := c.create_connection_auth_subprotocol(ctx)
 	if err != nil {
@@ -39,7 +39,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	dialCtx, dialCancel := context.WithTimeout(ctx, 30*time.Second) // Connection timeout
 	defer dialCancel()
 
-	wsConn, _, err := websocket.Dial(dialCtx, c.options.RealtimeServiceURL, &websocket.DialOptions{
+	wsConn, _, err := websocket.Dial(dialCtx, c.realtimeServiceURLInternal, &websocket.DialOptions{
 		Subprotocols: subprotocols,
 	})
 	if err != nil {

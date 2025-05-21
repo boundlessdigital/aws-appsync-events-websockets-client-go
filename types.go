@@ -11,8 +11,9 @@ import (
 
 // ClientOptions holds configuration for the AppSync WebSocket client.
 type ClientOptions struct {
-	AppSyncAPIURL         string        // The HTTP URL of the AppSync Events API (e.g., https://<id>.appsync-api.<region>.amazonaws.com/event)
-	RealtimeServiceURL    string        // The Realtime service URL for AppSync Events API (e.g., wss://<id>.appsync-realtime-api.<region>.amazonaws.com/event/realtime)
+	AppSyncAPIHost        string        // The hostname of the AppSync Events API (e.g., <id>.appsync-api.<region>.amazonaws.com)
+	AppSyncRealtimeHost   string        // The hostname of the AppSync Realtime service (e.g., <id>.appsync-realtime-api.<region>.amazonaws.com)
+	AWSRegion             string        // The AWS region where the AppSync API is deployed (e.g., us-west-1)
 	AWSCfg                aws.Config    // AWS SDK v2 Config, used for signing requests.
 	ConnectionInitPayload interface{}   // Payload for the 'connection_init' message, typically an empty object {}.
 	Debug                 bool          // Enable debug logging.

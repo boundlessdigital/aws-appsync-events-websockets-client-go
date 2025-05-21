@@ -48,7 +48,7 @@ func (c *Client) create_signed_headers_for_operation(ctx context.Context, payloa
 		return nil, fmt.Errorf("error marshalling payload for signing: %w", err)
 	}
 
-	parsed_url, err := url.Parse(c.options.AppSyncAPIURL)
+	parsed_url, err := url.Parse(c.appsyncAPIURLInternal)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing AppSync API URL: %w", err)
 	}
@@ -77,7 +77,7 @@ func (c *Client) create_signed_headers_for_operation(ctx context.Context, payloa
 	hash := sha256.Sum256(body_for_signing_bytes)
 	hex_hash := hex.EncodeToString(hash[:])
 
-	err = c.signer.SignHTTP(ctx, creds, req, hex_hash, "appsync", c.options.AWSCfg.Region, time.Now())
+	err = c.signer.SignHTTP(ctx, creds, req, hex_hash, "appsync", c.options.AWSRegion, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("error signing request: %w", err)
 	}
@@ -106,7 +106,7 @@ func (c *Client) create_signed_headers_for_operation(ctx context.Context, payloa
 
 func (c *Client) create_connection_auth_subprotocol(ctx context.Context) ([]string, error) {
 	// Per AppSync Events API IAM documentation, sign against the HTTP API endpoint.
-	parsedAPIURL, err := url.Parse(c.options.AppSyncAPIURL) // e.g., https://<id>.appsync-api.<region>.amazonaws.com/event
+	parsedAPIURL, err := url.Parse(c.appsyncAPIURLInternal) // e.g., https://<id>.appsync-api.<region>.amazonaws.com/event
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse AppSync API URL: %w", err)
 	}
@@ -146,7 +146,7 @@ func (c *Client) create_connection_auth_subprotocol(ctx context.Context) ([]stri
 		return nil, fmt.Errorf("failed to retrieve AWS credentials: %w", err)
 	}
 
-	err = c.signer.SignHTTP(ctx, creds, req, hexHash, "appsync", c.options.AWSCfg.Region, time.Now())
+	err = c.signer.SignHTTP(ctx, creds, req, hexHash, "appsync", c.options.AWSRegion, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign HTTP request: %w", err)
 	}

@@ -24,6 +24,8 @@ const (
 type Client struct {
 	internal_wg sync.WaitGroup
 	options      ClientOptions
+	appsyncAPIURLInternal    string // Constructed full HTTP URL
+	realtimeServiceURLInternal string // Constructed full WSS URL
 	testLogger   *testing.T // For direct test logging
 	conn         *websocket.Conn
 	connCtx      context.Context
@@ -44,12 +46,16 @@ type Client struct {
 
 // NewClient creates a new AppSync WebSocket client.
 func NewClient(opts ClientOptions) (*Client, error) {
-	if opts.AppSyncAPIURL == "" || opts.RealtimeServiceURL == "" {
-		return nil, fmt.Errorf("AppSyncAPIURL and RealtimeServiceURL must be provided")
+	if opts.AppSyncAPIHost == "" || opts.AppSyncRealtimeHost == "" || opts.AWSRegion == "" {
+		return nil, fmt.Errorf("AppSyncAPIHost, AppSyncRealtimeHost, and AWSRegion must be provided")
 	}
 	if opts.ConnectionInitPayload == nil {
 		opts.ConnectionInitPayload = make(map[string]interface{}) // Default to empty JSON object {}
 	}
+
+	// Construct full URLs
+	appsyncAPIURLInternal := fmt.Sprintf("https://%s/event", opts.AppSyncAPIHost)
+	realtimeServiceURLInternal := fmt.Sprintf("wss://%s/event/realtime", opts.AppSyncRealtimeHost)
 
 	if opts.KeepAliveInterval <= 0 {
 		opts.KeepAliveInterval = 2 * time.Minute // Default keep-alive interval
@@ -63,6 +69,8 @@ func NewClient(opts ClientOptions) (*Client, error) {
 
 	c := &Client{
 		options:    opts,
+		appsyncAPIURLInternal:    appsyncAPIURLInternal,
+		realtimeServiceURLInternal: realtimeServiceURLInternal,
 		testLogger: opts.TestLogger, // Initialize test logger
 		signer:     signer.NewSigner(),
 		operations: make(map[string]*operation),

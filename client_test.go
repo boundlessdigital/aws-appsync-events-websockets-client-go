@@ -18,8 +18,8 @@ import (
 
 // Configuration for integration tests
 const (
-	testAppSyncAPIURL      = "https://gk3gfluct5azlhi5d3rnumxoq4.appsync-api.us-west-1.amazonaws.com/graphql"
-	testRealtimeServiceURL = "wss://gk3gfluct5azlhi5d3rnumxoq4.appsync-realtime-api.us-west-1.amazonaws.com/event/realtime"
+	testAppSyncAPIHost      = "gk3gfluct5azlhi5d3rnumxoq4.appsync-api.us-west-1.amazonaws.com"
+	testAppSyncRealtimeHost = "gk3gfluct5azlhi5d3rnumxoq4.appsync-realtime-api.us-west-1.amazonaws.com"
 	testAWSRegion          = "us-west-1"
 	testAWSProfile         = "boundless-development" // Ensure this profile is configured for your test environment
 )
@@ -55,8 +55,9 @@ func TestIntegration_SubscribePublishReceive(t *testing.T) {
 	wg.Add(1) // For synchronizing receipt of the message
 
 	client, clientErr := NewClient(ClientOptions{
-		AppSyncAPIURL:      testAppSyncAPIURL,
-		RealtimeServiceURL: testRealtimeServiceURL,
+		AppSyncAPIHost:      testAppSyncAPIHost,
+		AppSyncRealtimeHost: testAppSyncRealtimeHost,
+		AWSRegion:           testAWSRegion,
 		AWSCfg:             awsCfg,
 		OnConnectionAck: func(msg Message) {
 			t.Logf("SPR Test: Connection ACK: type=%s", msg.Type)

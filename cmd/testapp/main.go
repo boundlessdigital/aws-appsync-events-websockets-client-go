@@ -10,15 +10,15 @@ import (
 	"time" // Added for timestamp in publish
 
 	"github.com/aws/aws-sdk-go-v2/config"
-	appsync "github.com/boundless-exports/aws-appsync-events-websockets-client-go"
+	appsync "github.com/boundlessdigital/aws-appsync-events-websockets-client-go"
 )
 
 // --- Configuration: Replace with your actual AppSync API details and AWS profile ---
 const (
-	// AppSyncAPIURL is the HTTP URL of your AppSync Events API (e.g., https://<id>.appsync-api.<region>.amazonaws.com/event)
-	appSyncAPIURLConfig = "https://gk3gfluct5azlhi5d3rnumxoq4.appsync-api.us-west-1.amazonaws.com/event"
-	// AppSyncRealtimeURL is the WebSocket URL of your AppSync Events API (e.g., wss://<id>.appsync-realtime-api.<region>.amazonaws.com/event/realtime)
-	appSyncRealtimeURLConfig = "wss://gk3gfluct5azlhi5d3rnumxoq4.appsync-realtime-api.us-west-1.amazonaws.com/event/realtime"
+	// AppSyncAPIHost is the hostname of your AppSync Events API (e.g., <id>.appsync-api.<region>.amazonaws.com)
+	appSyncAPIHostConfig = "gk3gfluct5azlhi5d3rnumxoq4.appsync-api.us-west-1.amazonaws.com"
+	// AppSyncRealtimeHost is the hostname of your AppSync Realtime API (e.g., <id>.appsync-realtime-api.<region>.amazonaws.com)
+	appSyncRealtimeHostConfig = "gk3gfluct5azlhi5d3rnumxoq4.appsync-realtime-api.us-west-1.amazonaws.com"
 	// AWSRegion is the AWS region where your AppSync API is deployed.
 	awsRegionConfig = "us-west-1"
 	// AWSProfile is the AWS shared configuration profile to use for credentials.
@@ -45,8 +45,9 @@ func main() {
 	log.Printf("AWS Config loaded successfully using profile: %s, region: %s", awsProfileConfig, awsRegionConfig)
 
 	clientOpts := appsync.ClientOptions{
-		AppSyncAPIURL:      appSyncAPIURLConfig,
-		RealtimeServiceURL: appSyncRealtimeURLConfig,
+		AppSyncAPIHost:      appSyncAPIHostConfig,
+		AppSyncRealtimeHost: appSyncRealtimeHostConfig,
+		AWSRegion:           awsRegionConfig,
 		AWSCfg:             awsCfg,
 		Debug:              true, // Enable debug logging from the client
 		OnConnectionAck: func(msg appsync.Message) {

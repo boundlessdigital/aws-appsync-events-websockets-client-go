@@ -21,7 +21,7 @@ This client is specifically for the **AWS AppSync Events API**. Ensure you are u
 
 1.  **AWS Account:** You need an active AWS account.
 2.  **AppSync Events API:** An AppSync API configured for the Events protocol.
-    *   You will need the **AppSync API URL** (e.g., `https://<api-id>.appsync-api.<region>.amazonaws.com/event`) and the **Realtime Service URL** (e.g., `wss://<api-id>.appsync-realtime-api.<region>.amazonaws.com/event/realtime`).
+    *   You will need the **AppSync API Host** (e.g., `<api-id>.appsync-api.<region>.amazonaws.com`), the **AppSync Realtime Host** (e.g., `<api-id>.appsync-realtime-api.<region>.amazonaws.com`), and the **AWS Region** (e.g., `us-west-1`) where your API is deployed.
 3.  **IAM Permissions:** The AWS credentials used by the client must have an IAM policy attached that grants permissions to interact with your AppSync Events API. This client handles the AWS Signature Version 4 (SigV4) signing process, which targets the `/event` path of your AppSync HTTP endpoint as detailed in the [AWS AppSync Events API WebSocket protocol documentation](https://docs.aws.amazon.com/appsync/latest/eventapi/event-api-websocket-protocol.html).
 
     A minimal IAM policy should grant the following actions:
@@ -96,8 +96,9 @@ func main() {
 	defer cancel()
 
 	// --- Configuration ---
-	appsyncAPIURL := "https://<your-appsync-api-id>.appsync-api.<your-region>.amazonaws.com/event"
-	realtimeServiceURL := "wss://<your-appsync-api-id>.appsync-realtime-api.<your-region>.amazonaws.com/event/realtime"
+	appsyncAPIHost := "<your-appsync-api-id>.appsync-api.<your-region>.amazonaws.com"
+	appsyncRealtimeHost := "<your-appsync-realtime-id>.appsync-realtime-api.<your-region>.amazonaws.com"
+	awsRegion := "<your-region>" // e.g., "us-west-1"
 	myChannel := "/example/channel"
 
 	// Load AWS configuration (ensure your environment is set up for AWS credentials)
@@ -108,8 +109,9 @@ func main() {
 
 	// --- Client Options ---
 	clientOptions := appsyncwsclient.ClientOptions{
-		AppSyncAPIURL:      appsyncAPIURL,
-		RealtimeServiceURL: realtimeServiceURL,
+		AppSyncAPIHost:      appsyncAPIHost,
+		AppSyncRealtimeHost: appsyncRealtimeHost,
+		AWSRegion:           awsRegion,
 		AWSCfg:             awsCfg,
 		Debug:              true, // Enable for detailed logging
 		KeepAliveInterval:  2 * time.Minute,
@@ -213,15 +215,16 @@ func main() {
 
 ### Finding Your URLs
 
-*   **AppSync API URL (for signing):** In the AWS AppSync console, go to your API, then select "Settings". The "API URL" listed here is typically for GraphQL. For the Events API, the base URL (e.g., `https://<api-id>.appsync-api.<region>.amazonaws.com`) combined with the `/event` path is used for constructing the signing URL.
-*   **Realtime Service URL (for WebSocket connection):** This is often in the format `wss://<api-id>.appsync-realtime-api.<region>.amazonaws.com/event/realtime`. You might also find this in the "Settings" page of your AppSync API in the console, sometimes labeled as "Realtime endpoint" or similar (ensure it's for the `/event/realtime` path).
+*   **AppSync API Host (for signing):** In the AWS AppSync console, go to your API, then select "Settings". The "API URL" listed here is typically for GraphQL. For the Events API, the hostname of the base URL (e.g., `<api-id>.appsync-api.<region>.amazonaws.com`) is used for constructing the signing URL.
+*   **Realtime Service Host (for WebSocket connection):** This is often in the format `<api-id>.appsync-realtime-api.<region>.amazonaws.com`. You might also find this in the "Settings" page of your AppSync API in the console, sometimes labeled as "Realtime endpoint" or similar (ensure it's for the `/event/realtime` path).
 
 ## ClientOptions
 
 The `ClientOptions` struct allows you to configure the client's behavior:
 
-*   `AppSyncAPIURL` (string, required): The HTTP URL for the AppSync Events API endpoint (used for request signing).
-*   `RealtimeServiceURL` (string, required): The WSS URL for the AppSync Events API Realtime service.
+*   `AppSyncAPIHost` (string, required): The hostname of your AppSync Events API (e.g., `<id>.appsync-api.<region>.amazonaws.com`).
+*   `AppSyncRealtimeHost` (string, required): The hostname of your AppSync Events API's realtime endpoint (e.g., `<id>.appsync-realtime-api.<region>.amazonaws.com`).
+*   `AWSRegion` (string, required): The AWS region where your AppSync API is deployed (e.g., `us-west-1`).
 *   `AWSCfg` (aws.Config, required): AWS SDK v2 configuration, used for IAM authentication. Ensure it's configured with credentials that have the necessary AppSync permissions.
 *   `ConnectionInitPayload` (interface{}, optional): Payload for the `connection_init` message. Defaults to an empty object `{}` if nil, which is standard for IAM auth.
 *   `Debug` (bool, optional): Set to `true` to enable detailed debug logging from the client.
@@ -260,6 +263,14 @@ Data for an active subscription is delivered via the `on_data func(data_payload 
 ## Debug Logging
 
 Set `ClientOptions.Debug = true` to enable verbose logging from the client, which can be helpful for troubleshooting connection and message flow issues.
+
+## Changelog
+
+### v0.2.0 - 2025-05-21
+
+*   **Breaking Change:** Updated `ClientOptions` to accept `AppSyncAPIHost` (string), `AppSyncRealtimeHost` (string), and `AWSRegion` (string) instead of full `AppSyncAPIURL` and `RealtimeServiceURL`. The client now constructs the full URLs internally. This change simplifies configuration and reduces potential URL formatting errors. Refer to the "Basic Usage" and "ClientOptions" sections for updated examples.
+*   Refactored subscription management logic into a separate `subscription.go` file for better code organization.
+*   Updated all tests and the test application to align with the new `ClientOptions` structure.
 
 ## Contributing
 
