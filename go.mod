@@ -1,6 +1,6 @@
-module github.com/boundless-exports/aws-appsync-events-websockets-client-go
+module github.com/boundlessdigital/aws-appsync-events-websockets-client
 
-go 1.21
+go 1.24
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.26.2
